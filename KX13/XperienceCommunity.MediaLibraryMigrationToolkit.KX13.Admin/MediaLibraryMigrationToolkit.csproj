@@ -496,6 +496,7 @@
     <Reference Include="System.ValueTuple, Version=4.0.2.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>I:\Web\Kentico13Core\KenticoAdmin\packages\System.ValueTuple.4.4.0\lib\net47\System.ValueTuple.dll</HintPath>
     </Reference>
+    <Reference Include="System.Web" />
     <Reference Include="System.Web.Http, Version=5.2.3.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>I:\Web\Kentico13Core\KenticoAdmin\packages\Microsoft.AspNet.WebApi.Core.5.2.3\lib\net45\System.Web.Http.dll</HintPath>
     </Reference>
@@ -532,6 +533,13 @@
     <Compile Include="Classes\Base\Interfaces\IMediaFileCloneInfoProvider.cs" />
     <Compile Include="Classes\Base\MediaFileCloneInfo.cs" />
     <Compile Include="Classes\Base\MediaFileCloneInfoProvider.cs" />
+    <Compile Include="Classes\Custom\MediaConversionObject.cs" />
+    <Compile Include="Classes\Custom\MediaConversionObjectItem.cs" />
+    <Compile Include="Classes\Custom\MediaFileObjectReference.cs" />
+    <Compile Include="Helpers\MediaLibraryMigrationScanner.cs" />
+    <Compile Include="Classes\Custom\MediaLibraryMigrationSettings.cs" />
+    <Compile Include="Classes\Custom\MediaTrackingDictionaries.cs" />
+    <Compile Include="Helpers\MediaMigrationFunctions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

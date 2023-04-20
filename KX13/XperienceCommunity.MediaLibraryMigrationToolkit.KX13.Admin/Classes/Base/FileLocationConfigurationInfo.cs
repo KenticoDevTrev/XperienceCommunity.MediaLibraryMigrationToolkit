@@ -128,6 +128,23 @@ namespace MediaLibraryMigrationToolkit
 
 
         /// <summary>
+        /// Table identifier column.
+        /// </summary>
+        [DatabaseField]
+        public virtual string TableIdentifierColumn
+        {
+            get
+            {
+                return ValidationHelper.GetString(GetValue("TableIdentifierColumn"), String.Empty);
+            }
+            set
+            {
+                SetValue("TableIdentifierColumn", value);
+            }
+        }
+
+
+        /// <summary>
         /// Column Name that will be scanned for media file URLs (both to detect files and for relative to permanent url swapping).
         /// </summary>
         [DatabaseField]

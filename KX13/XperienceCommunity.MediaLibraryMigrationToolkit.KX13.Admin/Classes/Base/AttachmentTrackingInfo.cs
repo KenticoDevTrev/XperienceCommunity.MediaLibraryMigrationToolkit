@@ -105,24 +105,6 @@ namespace MediaLibraryMigrationToolkit
             }
         }
 
-
-        /// <summary>
-        /// Non permanent url.
-        /// </summary>
-        [DatabaseField]
-        public virtual string AttachmentOriginalUrl
-        {
-            get
-            {
-                return ValidationHelper.GetString(GetValue("AttachmentOriginalUrl"), String.Empty);
-            }
-            set
-            {
-                SetValue("AttachmentOriginalUrl", value);
-            }
-        }
-
-
         /// <summary>
         /// Attachment permanent url.
         /// </summary>

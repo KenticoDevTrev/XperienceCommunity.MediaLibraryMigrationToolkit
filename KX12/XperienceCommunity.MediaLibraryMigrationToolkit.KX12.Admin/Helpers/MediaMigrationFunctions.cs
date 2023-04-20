@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public static class MediaMigrationFunctions
     {
@@ -28,8 +28,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
         {
             var keyToMediaConversionObject = new Dictionary<string, MediaConversionObject>();
 
-            var _fileLocationConfigurationInfoProvider = Service.Resolve<IFileLocationConfigurationInfoProvider>();
-            var query = _fileLocationConfigurationInfoProvider.Get();
+            var query = FileLocationConfigurationInfoProvider.GetFileLocationConfigurations();
             if(configurationIds.Any())
             {
                 query.WhereIn(nameof(FileLocationConfigurationInfo.FileLocationConfigurationID), configurationIds.ToArray());
@@ -115,7 +114,7 @@ FilePermanentUrl as FileTrackingPermanentUrl,
 0 as FileTrackingPreserved
 from (
 SELECT FileID, Prefix+FilePath as FileTrackingOriginalUrl, FileGUID,  '/getmedia/'+cast(FileGuid as nvarchar(50))+'/'+FileName as FilePermanentUrl from (
-select FileID, FileGuid, FileName+'.'+FileExtension as FileName,
+select FileID, FileGuid, FileName+FileExtension as FileName,
 case when NULLIF(COALESCE(GlobalSKFolder.KeyValue, SiteSKFolder.KeyValue), '') is null 
 	then
 		'/'+SiteName+'/media' 

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public class MediaTrackingDictionaries
     {

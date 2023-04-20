@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public static class MediaMigrationFunctions
     {

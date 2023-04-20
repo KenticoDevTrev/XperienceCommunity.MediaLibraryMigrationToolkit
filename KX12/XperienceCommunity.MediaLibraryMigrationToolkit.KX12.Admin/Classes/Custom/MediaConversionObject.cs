@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
-namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public class MediaConversionObject
     {

@@ -1,4 +1,4 @@
-﻿namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+﻿namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public class MediaFileObjectReference
     {

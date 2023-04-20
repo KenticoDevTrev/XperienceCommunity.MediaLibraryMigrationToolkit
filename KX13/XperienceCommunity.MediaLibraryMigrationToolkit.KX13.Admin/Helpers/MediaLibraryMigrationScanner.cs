@@ -16,7 +16,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
+namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public static class StringExtensionMethods
     {
@@ -46,15 +46,19 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
 
         public MediaLibraryMigrationScanner(MediaLibraryMigrationSettings settings, IEnumerable<MediaConversionObject> mediaConversionObjects)
         {
+            _settings = settings;
+            
             _trackingDictionaries = GetMediaTrackingDictionaries();
+
             // Build media regex based on all possible prefixes
             string allPrefixMatches = $"({_trackingDictionaries.AllMediaPrefixes.Select(x => x + "/").Join(")|(")})";
             // This regex will match any of the media library relative path that exists
             // It creates a Group 1 of the full Relative Url (without any query string / hash)
             // You can then loop through other groups to see if any start with ? or #, if so then that group contains the stuff after the URL if it had a hash or ?
-            _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^\?\#\n\r\""]*))((\?([^\?\n\r\""]*))|(\#([^\n\r\""]*))){{0,1}}(?=(\""|$))", RegexOptions.IgnoreCase);
-            _attachmentRegex = new Regex(@"(~?((\/getattachment\/)([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}))([^\?\#\n\r\""]*))((\?([^\?\n\r\""]*))|(\#([^\n\r\""]*))){0,1}(?=(\""|$))", RegexOptions.IgnoreCase);
-            _getMediaRegex = new Regex(@"(~?((\/getmedia\/)([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}))([^\?\#\n\r\""]*))((\?([^\?\n\r\""]*))|(\#([^\n\r\""]*))){0,1}(?=(\""|$))", RegexOptions.IgnoreCase);
+            _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^\?\#\n\r\<\|\^\}}\""\']*\.[^\?\#\n\r\<\|\^\}}\""\' ]*))((\?([^\?\n\r\<\|\^\}}\""\' ]*))|(\#([^\n\r\<\|\^\}}\""\' ]*))){{0,1}}(?=(\<|\||\^|\}}|\""|\'| |$))", RegexOptions.IgnoreCase);
+            _attachmentRegex = new Regex(@"(~?((\/getattachment\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
+            _getMediaRegex = new Regex(@"(~?((\/getmedia\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
+
             _attachmentInfoProvider = CMS.Core.Service.Resolve<IAttachmentInfoProvider>();
             if (_settings.ConvertAttachments)
             {
@@ -65,9 +69,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
                 }
             }
             _mediaFileInfoProvider = CMS.Core.Service.Resolve<IMediaFileInfoProvider>();
-            _settings = settings;
             MediaConversionObjects = mediaConversionObjects;
             _attachmentGuidInfoProvider = CMS.Core.Service.Resolve<IAttachmentIDToGuidCloneInfoProvider>();
+
 
         }
 
@@ -152,9 +156,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
                         var matches = _getMediaRegex.Matches(value);
                         foreach (Match match in matches)
                         {
-                            if (match.Groups.Count > 0)
+                            if (match.Groups.Count > 1)
                             {
-                                string path = match.Groups[0].Value;
+                                string path = match.Groups[1].Value;
                                 string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value ?? string.Empty;
                                 var mediaGroups = match.Groups.Cast<Group>().Where(x => Guid.TryParse(x.Value, out var guid)).Select(x => Guid.Parse(x.Value));
                                 if (mediaGroups.Any())
@@ -208,9 +212,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
                         var matches = _getMediaRegex.Matches(value);
                         foreach (Match match in matches)
                         {
-                            if (match.Groups.Count > 0)
+                            if (match.Groups.Count > 1)
                             {
-                                string path = match.Groups[0].Value;
+                                string path = match.Groups[1].Value;
                                 string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value ?? string.Empty;
                                 var mediaGroups = match.Groups.Cast<Group>().Where(x => Guid.TryParse(x.Value, out var guid)).Select(x => Guid.Parse(x.Value));
                                 if (mediaGroups.Any())
@@ -222,33 +226,36 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
                         }
 
                         // Find media items that are relative and convert to permanent
-                        matches = _mediaRegex.Matches(value);
-                        foreach (Match match in matches)
+                        if (_settings.UpdateMediaFileUrlsToPermanent)
                         {
-                            if (match.Groups.Count > 0)
+                            matches = _mediaRegex.Matches(value);
+                            foreach (Match match in matches)
                             {
-                                string path = match.Groups[0].Value;
-                                string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value ?? string.Empty;
-                                string pathLookup = "/" + path.Trim('~').Trim('/').ToLower();
-                                Guid? fileGuid = null;
-                                if (_trackingDictionaries.PathToMediaGuid.ContainsKey(pathLookup))
+                                if (match.Groups.Count > 1)
                                 {
-                                    fileGuid = _trackingDictionaries.PathToMediaGuid[pathLookup];
-                                }
-                                else if (_trackingDictionaries.EncodedPathToMediaGuid.ContainsKey(pathLookup))
-                                {
-                                    fileGuid = _trackingDictionaries.EncodedPathToMediaGuid[pathLookup];
-                                }
-                                if (fileGuid.HasValue)
-                                {
-                                    // Only replace first in case other groups in mix.
-                                    value = value.ReplaceFirst($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[fileGuid.Value] + extension);
-                                    itemsTouched++;
-                                    conversionItem.MediaFilesUpdated.Add(fileGuid.Value);
-                                }
-                                else
-                                {
-                                    conversionItem.MediaNotFound.Add(path);
+                                    string path = match.Groups[1].Value;
+                                    string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value ?? string.Empty;
+                                    string pathLookup = "/" + path.Trim('~').Trim('/').ToLower();
+                                    Guid? fileGuid = null;
+                                    if (_trackingDictionaries.PathToMediaGuid.ContainsKey(pathLookup))
+                                    {
+                                        fileGuid = _trackingDictionaries.PathToMediaGuid[pathLookup];
+                                    }
+                                    else if (_trackingDictionaries.EncodedPathToMediaGuid.ContainsKey(pathLookup))
+                                    {
+                                        fileGuid = _trackingDictionaries.EncodedPathToMediaGuid[pathLookup];
+                                    }
+                                    if (fileGuid.HasValue)
+                                    {
+                                        // Only replace first in case other groups in mix.
+                                        value = value.ReplaceFirst($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[fileGuid.Value] + extension);
+                                        itemsTouched++;
+                                        conversionItem.MediaFilesUpdated.Add(fileGuid.Value);
+                                    }
+                                    else
+                                    {
+                                        conversionItem.MediaNotFound.Add(path);
+                                    }
                                 }
                             }
                         }
@@ -259,9 +266,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit.Helpers
                             matches = _attachmentRegex.Matches(value);
                             foreach (Match match in matches)
                             {
-                                if (match.Groups.Count > 0)
+                                if (match.Groups.Count > 1)
                                 {
-                                    string path = match.Groups[0].Value;
+                                    string path = match.Groups[1].Value;
                                     string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value ?? string.Empty;
                                     var attachmentGroups = match.Groups.Cast<Group>().Where(x => Guid.TryParse(x.Value, out var guid)).Select(x => Guid.Parse(x.Value));
                                     if (attachmentGroups.Any())

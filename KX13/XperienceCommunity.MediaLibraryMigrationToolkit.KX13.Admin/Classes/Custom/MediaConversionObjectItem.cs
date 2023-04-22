@@ -15,6 +15,11 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         }
         public int ID { get; set; }
         public Dictionary<string, string> ColumnToValue { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
+        /// Contains unique identifiers found, both from File reference fields, and also populated from normal scans
+        /// </summary>
+        public List<Guid> GuidValuesFound { get; set; } = new List<Guid>();
         public Dictionary<string, int> ColumnsTouched { get; set; } = new Dictionary<string, int>();
         public List<string> MediaNotFound { get; set; } = new List<string>();
 

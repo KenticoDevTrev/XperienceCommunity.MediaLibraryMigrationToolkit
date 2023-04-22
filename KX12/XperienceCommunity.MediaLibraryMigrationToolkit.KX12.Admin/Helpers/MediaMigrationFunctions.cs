@@ -1,6 +1,7 @@
 ﻿using CMS.Core;
 using CMS.DataEngine;
 using CMS.Helpers;
+using CMS.ImportExport;
 using MediaLibraryMigrationToolkit;
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         /// <returns></returns>
         public static IEnumerable<MediaConversionObject> GetFileLocationConfigurations(IEnumerable<int> configurationIds)
         {
+            var guidType = typeof(Guid);
             var keyToMediaConversionObject = new Dictionary<string, MediaConversionObject>();
 
             var query = FileLocationConfigurationInfoProvider.GetFileLocationConfigurations();
@@ -64,7 +66,14 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                     foreach(var column in mediaConversionObject.ColumnsToCheck)
                     {
                         if (dr[column] != null && dr[column] != DBNull.Value) {
-                            newItem.ColumnToValue.Add(column, ValidationHelper.GetString(dr[column], string.Empty));
+                            if (dr[column].GetType() == guidType)
+                            {
+                                newItem.ColumnToGuidValue.Add(column, (Guid)dr[column]);
+                            }
+                            else
+                            {
+                                newItem.ColumnToValue.Add(column, ValidationHelper.GetString(dr[column], string.Empty));
+                            }
                         } else
                         {
                             newItem.ColumnToValue.Add(column, null);
@@ -137,5 +146,57 @@ where FileID not in (select FileTrackingMediaID from MediaLibraryMigrationToolki
 delete from MediaLibraryMigrationToolkit_FileTracking where FileTrackingMediaID not in (Select FileID from Media_File)";
             ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
         }
+
+
+        public static DataSet GetDataSetOfMediaResultsForDataExportHelper(MediaFindingResult findingResults)
+        {
+            // Create DataTabe of the results
+            DataSet ds = new DataSet();
+            DataTable dt = new DataTable("MediaFindingResults");
+            dt.Columns.AddRange(new DataColumn[]
+            {
+                new DataColumn("IsAttachment", typeof(bool)),
+                new DataColumn("Occurrences", typeof(int)),
+                new DataColumn("ID", typeof(int)),
+                new DataColumn("GUID", typeof(string)),
+                new DataColumn("Name", typeof(string)),
+                new DataColumn("Path", typeof(string)),
+                new DataColumn("CultureOrLibraryName", typeof(string)),
+                new DataColumn("LastModified", typeof(DateTime))
+            });
+
+            foreach(var attachment in findingResults.AllAttachments.Values)
+            {
+                var dr = dt.NewRow();
+                dr["IsAttachment"] = true;
+                dr["Occurrences"] = attachment.TotalOccurrences;
+                dr["ID"] = attachment.AttachmentID;
+                dr["GUID"] = attachment.AttachmentGuid;
+                dr["Name"] = attachment.AttachmentName;
+                dr["Path"] = attachment.NodeAliasPath;
+                dr["CultureOrLibraryName"] = attachment.DocumentCulture;
+                dr["LastModified"] = attachment.LastModified;
+                dt.Rows.Add(dr);
+            }
+
+            foreach (var mediaFile in findingResults.AllMediaFiles.Values)
+            {
+                var dr = dt.NewRow();
+                dr["IsAttachment"] = false;
+                dr["Occurrences"] = mediaFile.TotalOccurrences;
+                dr["ID"] = mediaFile.MediaFileID;
+                dr["GUID"] = mediaFile.MediaGuid;
+                dr["Name"] = mediaFile.MediaName;
+                dr["Path"] = mediaFile.MediaPath;
+                dr["CultureOrLibraryName"] = mediaFile.LibraryName;
+                dr["LastModified"] = mediaFile.LastModified;
+                dt.Rows.Add(dr);
+            }
+
+            ds.Tables.Add(dt);
+
+            return ds;
+        }
+
     }
 }

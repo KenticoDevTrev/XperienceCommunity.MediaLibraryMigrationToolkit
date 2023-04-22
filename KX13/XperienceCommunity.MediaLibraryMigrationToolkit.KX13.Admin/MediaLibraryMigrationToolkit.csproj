@@ -540,6 +540,7 @@
     <Compile Include="Classes\Custom\MediaLibraryMigrationSettings.cs" />
     <Compile Include="Classes\Custom\MediaTrackingDictionaries.cs" />
     <Compile Include="Helpers\MediaMigrationFunctions.cs" />
+    <Compile Include="MediaLibraryMigrationToolkitInitializationModule.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

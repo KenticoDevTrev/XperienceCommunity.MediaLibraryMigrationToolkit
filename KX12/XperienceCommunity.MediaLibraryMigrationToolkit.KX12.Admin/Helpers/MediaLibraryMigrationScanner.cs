@@ -1,6 +1,7 @@
 ﻿
 using CMS.DataEngine;
 using CMS.DocumentEngine;
+using CMS.EventLog;
 using CMS.Helpers;
 using CMS.MediaLibrary;
 using MediaLibraryMigrationToolkit;
@@ -30,25 +31,34 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         }
     }
 
-    public class MediaLibraryMigrationScanner
+    public partial class MediaLibraryMigrationScanner
     {
         private readonly MediaTrackingDictionaries _trackingDictionaries;
         private readonly Regex _mediaRegex;
         private readonly Regex _attachmentRegex;
         private readonly Regex _getMediaRegex;
+        private readonly Regex _guidRegex;
 
         private readonly MediaLibraryInfo _attachmentMediaLibrary;
         private readonly MediaLibraryMigrationSettings _settings;
         public List<MediaConversionObject> MediaConversionObjects { get; }
-
+        public List<string> SaveErrors { get; set; } = new List<string>();
         public MediaLibraryMigrationScanner(MediaLibraryMigrationSettings settings, IEnumerable<MediaConversionObject> mediaConversionObjects)
         {
             _settings = settings;
 
             _trackingDictionaries = GetMediaTrackingDictionaries();
 
+            if(_settings.MediaMissing == MediaMissingMode.SetToMediaNotFoundGuid || _settings.AttachmentFailureForGuidColumn == AttachmentFailureMode.SetToMediaNotFoundGuid)
+            {
+                if(!_trackingDictionaries.FileGuidToNewUrl.ContainsKey(_settings.MediaNotFoundGuid))
+                {
+                    throw new NotSupportedException($"If you want to set Media to a 'Not Found' media item, the MediaNotFoundGuid {_settings.MediaNotFoundGuid} must point to a valid Media File");
+                }
+            }
+
             // Build media regex based on all possible prefixes
-            string allPrefixMatches = $"({_trackingDictionaries.AllMediaPrefixes.Select(x => (x + "/").Replace("/","\\/")).Join(")|(")})";
+            string allPrefixMatches = $"({_trackingDictionaries.AllMediaPrefixes.Select(x => (x + "/").Replace("/", "\\/")).Join(")|(")})";
             // This regex will match any of the media library relative path that exists
             // It creates a Group 1 of the full Relative Url (without any query string / hash)
             // You can then loop through other groups to see if any start with ? or #, if so then that group contains the stuff after the URL if it had a hash or ?
@@ -56,6 +66,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^\?\#\n\r\<\|\^\}}\""\']*\.[^\?\#\n\r\<\|\^\}}\""\' ]*))((\?([^\?\n\r\<\|\^\}}\""\' ]*))|(\#([^\n\r\<\|\^\}}\""\' ]*))){{0,1}}(?=(\<|\||\^|\}}|\""|\'| |$))", RegexOptions.IgnoreCase);
             _attachmentRegex = new Regex(@"(~?((\/getattachment\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
             _getMediaRegex = new Regex(@"(~?((\/getmedia\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
+            _guidRegex = new Regex(@"([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})", RegexOptions.IgnoreCase);
 
             if (_settings.ConvertAttachments)
             {
@@ -69,6 +80,10 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
 
         }
 
+        /// <summary>
+        /// Updates all items found and converted
+        /// </summary>
+        /// <returns></returns>
         public int SaveMediaConversionObjects()
         {
             int itemsUpdated = 0;
@@ -76,15 +91,24 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             {
                 foreach (var mediaConversionItem in mediaConversionObject.Items)
                 {
-                    if (mediaConversionItem.UpdateIfTouchedItem(mediaConversionObject.Table, mediaConversionObject.Schema, mediaConversionObject.RowIDColumn))
+                    try
                     {
-                        itemsUpdated++;
+                        if (mediaConversionItem.UpdateIfTouchedItem(mediaConversionObject.Table, mediaConversionObject.Schema, mediaConversionObject.RowIDColumn))
+                        {
+                            itemsUpdated++;
+                        }
+                    } catch(ConversionSaveException ex)
+                    {
+                        SaveErrors.Add(ex.Message);
                     }
                 }
             }
             return itemsUpdated;
         }
 
+        /// <summary>
+        /// Saves the Media Library items and how many times they were found in a given configuration to the database.
+        /// </summary>
         public void SetFileFindingResults()
         {
             Dictionary<int, Dictionary<int, int>> configurationIDToTrackingIDToCount = new Dictionary<int, Dictionary<int, int>>();
@@ -130,9 +154,65 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         /// </summary>
         /// <param name="ConversionObjects"></param>
         /// <returns></returns>
-        public Dictionary<Guid, Dictionary<string, MediaFileObjectReference>> FindAllMediaFileGuidsAndCounts()
+        public MediaFindingResult FindAllMediaItems()
         {
-            Dictionary<Guid, Dictionary<string, MediaFileObjectReference>> mediaGuidToObjectKeyToReferences = new Dictionary<Guid, Dictionary<string, MediaFileObjectReference>>();
+            // Get all attachments (that haven't already been converted) and Media Items by guid
+            var attachmentByGuid = ConnectionHelper.ExecuteQuery(@"select 
+AttachmentID,
+AttachmentGuid,
+AttachmentName,
+NodeAliasPath,
+SiteName,
+DocumentCulture,
+AttachmentLastModified
+ from CMS_Attachment
+inner join View_CMS_Tree_Joined on AttachmentDocumentID = DocumentID
+inner join CMS_Site on SiteID = NodeSiteID
+where AttachmentGUID not in (Select FileGuid from Media_File)
+order by SiteName, NodeAliasPath, DocumentCulture, AttachmentName", null, QueryTypeEnum.SQLQuery)
+                .Tables[0].Rows.Cast<DataRow>()
+                .Select(x => new AttachmentSummary()
+                {
+                    AttachmentID = (int)x["AttachmentID"],
+                    AttachmentGuid = (Guid)x["AttachmentGuid"],
+                    AttachmentName = (string)x["AttachmentName"],
+                    NodeAliasPath = (string)x["NodeAliasPath"],
+                    SiteName = (string)x["SiteName"],
+                    DocumentCulture = (string)x["DocumentCulture"],
+                    LastModified = (DateTime)x["AttachmentLastModified"]
+                })
+                .GroupBy(x => x.AttachmentGuid)
+                .ToDictionary(key => key.Key, value => value.First());
+
+            var mediaByGuid = ConnectionHelper.ExecuteQuery(@"select 
+FileID,
+FileGUID,
+FileName+FileExtension as FileName,
+LibraryFolder+'/'+FilePath as FilePath,
+SiteName,
+LibraryName,
+FileModifiedWhen
+ from Media_File
+inner join Media_Library on LibraryID = FileLibraryID
+inner join CMS_Site on SiteID = LibrarySiteID
+order by SiteName, LibraryName, FilePath, FileName", null, QueryTypeEnum.SQLQuery)
+                .Tables[0].Rows.Cast<DataRow>()
+                .Select(x => new MediaSummary()
+                {
+                    MediaFileID = (int)x["FileID"],
+                    MediaGuid = (Guid)x["FileGUID"],
+                    MediaName = (string)x["FileName"],
+                    MediaPath = (string)x["FilePath"],
+                    SiteName = (string)x["SiteName"],
+                    LibraryName = (string)x["LibraryName"],
+                    LastModified = (DateTime)x["FileModifiedWhen"],
+
+                })
+                .GroupBy(x => x.MediaGuid)
+                .ToDictionary(key => key.Key, value => value.First());
+
+            var mediaGuidToObjectKeyToReferences = mediaByGuid.ToDictionary(key => key.Key, value => new Dictionary<string, MediaFileObjectReference>());
+            var attachmentGuidToObjectKeyToReferences = attachmentByGuid.ToDictionary(key => key.Key, value => new Dictionary<string, MediaFileObjectReference>());
 
             foreach (var conversionObject in MediaConversionObjects)
             {
@@ -140,60 +220,91 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                 {
                     foreach (var columnKey in conversionItem.ColumnToValue.Keys)
                     {
+                        string referenceKey = $"{conversionObject.Table}|{conversionItem.ID}|{columnKey}".ToLower();
+
+                        if (conversionItem.ColumnToGuidValue.TryGetValue(columnKey.ToLower(), out var columnGuidValue))
+                        {
+                            if (attachmentByGuid.ContainsKey(columnGuidValue))
+                            {
+                                attachmentByGuid[columnGuidValue].TotalOccurrences++;
+                                if (!attachmentGuidToObjectKeyToReferences[columnGuidValue].ContainsKey(referenceKey))
+                                {
+                                    attachmentGuidToObjectKeyToReferences[columnGuidValue].Add(referenceKey, new MediaFileObjectReference(conversionObject.Table, conversionItem.ID, columnKey));
+                                }
+                                attachmentGuidToObjectKeyToReferences[columnGuidValue][referenceKey].Occurrences++;
+                            }
+                            if (mediaByGuid.ContainsKey(columnGuidValue))
+                            {
+                                mediaByGuid[columnGuidValue].TotalOccurrences++;
+                                if (!mediaGuidToObjectKeyToReferences[columnGuidValue].ContainsKey(referenceKey))
+                                {
+                                    mediaGuidToObjectKeyToReferences[columnGuidValue].Add(referenceKey, new MediaFileObjectReference(conversionObject.Table, conversionItem.ID, columnKey));
+                                }
+                                mediaGuidToObjectKeyToReferences[columnGuidValue][referenceKey].Occurrences++;
+                            }
+                            continue;
+                        }
+
                         // Skip if no values
                         if (string.IsNullOrWhiteSpace(conversionItem.ColumnToValue[columnKey]))
                         {
                             continue;
                         }
 
-                        string referenceKey = $"{conversionObject.Table}|{conversionItem.ID}|{columnKey}".ToLower();
                         string value = conversionItem.ColumnToValue[columnKey];
-                        var matches = _getMediaRegex.Matches(value);
+                        var matches = _guidRegex.Matches(value);
                         foreach (Match match in matches)
                         {
                             if (match.Groups.Count > 1)
                             {
-                                string path = match.Groups[1].Value.Trim();
-                                string extension = match.Groups.Cast<Group>().FirstOrDefault(x => x.Value.StartsWith("?") || x.Value.StartsWith("#"))?.Value.Trim() ?? string.Empty;
-                                var mediaGroups = match.Groups.Cast<Group>().Where(x => Guid.TryParse(x.Value, out var guid)).Select(x => Guid.Parse(x.Value));
-                                if (mediaGroups.Any())
+                                Guid guidValue = Guid.Parse(match.Groups[1].Value);
+                                if (attachmentByGuid.ContainsKey(guidValue))
                                 {
-                                    Guid mediaGuid = mediaGroups.First();
-                                    if (!mediaGuidToObjectKeyToReferences.ContainsKey(mediaGuid))
+                                    attachmentByGuid[guidValue].TotalOccurrences++;
+                                    if (!attachmentGuidToObjectKeyToReferences[guidValue].ContainsKey(referenceKey))
                                     {
-                                        mediaGuidToObjectKeyToReferences.Add(mediaGuid, new Dictionary<string, MediaFileObjectReference>());
+                                        attachmentGuidToObjectKeyToReferences[guidValue].Add(referenceKey, new MediaFileObjectReference(conversionObject.Table, conversionItem.ID, columnKey));
                                     }
-                                    var dictionary = mediaGuidToObjectKeyToReferences[mediaGuid];
-                                    if (!dictionary.ContainsKey(referenceKey))
+                                    attachmentGuidToObjectKeyToReferences[guidValue][referenceKey].Occurrences++;
+                                }
+                                if (mediaByGuid.ContainsKey(guidValue))
+                                {
+                                    mediaByGuid[guidValue].TotalOccurrences++;
+                                    if (!mediaGuidToObjectKeyToReferences[guidValue].ContainsKey(referenceKey))
                                     {
-                                        dictionary.Add(referenceKey, new MediaFileObjectReference(conversionObject.Table, conversionItem.ID, columnKey));
+                                        mediaGuidToObjectKeyToReferences[guidValue].Add(referenceKey, new MediaFileObjectReference(conversionObject.Table, conversionItem.ID, columnKey));
                                     }
-                                    else
-                                    {
-                                        dictionary[referenceKey].Occurrences++;
-                                    }
+                                    mediaGuidToObjectKeyToReferences[guidValue][referenceKey].Occurrences++;
                                 }
                             }
                         }
                     }
                 }
             }
-            return mediaGuidToObjectKeyToReferences;
-        }
 
+            var results = new MediaFindingResult()
+            {
+                AllAttachments = attachmentByGuid,
+                AttachmentOccurrances = attachmentByGuid.ToDictionary(key => key.Key, value => value.Value.TotalOccurrences),
+                AttachmentFileReferences = attachmentGuidToObjectKeyToReferences.ToDictionary(key => key.Key, value => value.Value.Select(x => x.Value).ToList()),
+                AllMediaFiles = mediaByGuid,
+                MediaOccurrances = mediaByGuid.ToDictionary(key => key.Key, value => value.Value.TotalOccurrences),
+                MediaFileReferences = mediaGuidToObjectKeyToReferences.ToDictionary(key => key.Key, value => value.Value.Select(x => x.Value).ToList())
+            };
+            return results;
+        }
 
         /// <summary>
         /// Replaces all Non /getmedia URLs (and possibly /getattachment) with the proper /getmedia url, this does NOT run the database updates though.
         /// </summary>
-        /// <param name="allRowValues"></param>
         /// <returns></returns>
         public void RunReplacement()
         {
-            for(int co = 0; co < MediaConversionObjects.Count(); co++)
+            for (int co = 0; co < MediaConversionObjects.Count(); co++)
             //foreach (var conversionObject in MediaConversionObjects)
             {
                 var conversionObject = MediaConversionObjects[co];
-                for(int coi = 0; coi < conversionObject.Items.Count; coi++) 
+                for (int coi = 0; coi < conversionObject.Items.Count; coi++)
                 //foreach (var conversionItem in conversionObject.Items)
                 {
                     var conversionItem = conversionObject.Items[coi];
@@ -201,6 +312,40 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                     var columnKeys = conversionItem.ColumnToValue.Keys.ToArray();
                     foreach (var columnKey in columnKeys)
                     {
+                        // Handle GUID Columns specially
+                        if (conversionItem.ColumnToGuidValue.ContainsKey(columnKey))
+                        {
+                            var columnGuidValue = conversionItem.ColumnToGuidValue[columnKey];
+                            if (_settings.ConvertAttachments && _trackingDictionaries.AllAttachmentGuids.ContainsKey(columnGuidValue))
+                            {
+                                // Upload to media Library here and get new Guid
+                                if (!_trackingDictionaries.FileGuidToNewUrl.ContainsKey(columnGuidValue))
+                                {
+                                    // Upload to media file HERE
+                                    if(!CloneAttachmentToMediaFile(columnGuidValue))
+                                    {
+                                        conversionItem.AttachmentConversionFailures.Add(columnGuidValue);
+                                        switch(_settings.AttachmentFailureForGuidColumn)
+                                        {
+                                            case AttachmentFailureMode.Leave:
+
+                                                break;
+                                            case AttachmentFailureMode.SetNull:
+                                                conversionItem.ColumnToGuidValue[columnKey] = Guid.Empty;
+                                                break;
+                                            case AttachmentFailureMode.SetToMediaNotFoundGuid:
+                                                conversionItem.ColumnToGuidValue[columnKey] = _settings.MediaNotFoundGuid;
+                                                break;
+                                        }
+                                        continue;
+                                    }
+                                }
+
+                                conversionItem.AttachmentsConverted.Add(columnGuidValue);
+                            }
+                            continue;
+                        }
+
                         // Skip if no values
                         if (string.IsNullOrWhiteSpace(conversionItem.ColumnToValue[columnKey]))
                         {
@@ -257,6 +402,15 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                                     else
                                     {
                                         conversionItem.MediaNotFound.Add(path);
+                                        switch (_settings.MediaMissing)
+                                        {
+                                            case MediaMissingMode.Leave:
+                                                break;
+                                            case MediaMissingMode.SetToMediaNotFoundGuid:
+                                                value = value.Replace($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[_settings.MediaNotFoundGuid] + extension);
+                                                itemsTouched++;
+                                                break;
+                                        }
                                     }
                                 }
                             }
@@ -277,21 +431,59 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                                     {
                                         Guid attachmentGuid = attachmentGroups.First();
 
-                                        // Upload to media Library here and get new Guid
-                                        if (!_trackingDictionaries.AttachmentGuidToMediaGuid.ContainsKey(attachmentGuid))
+                                        if (_trackingDictionaries.AllAttachmentGuids.ContainsKey(attachmentGuid))
                                         {
-                                            // Upload to media file HERE
-                                            CloneAttachmentToMediaFile(attachmentGuid);
-                                        }
 
-                                        // Only replace first in case other groups in mix.
-                                        value = value.ReplaceFirst($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[_trackingDictionaries.AttachmentGuidToMediaGuid[attachmentGuid]] + extension);
-                                        itemsTouched++;
-                                        conversionItem.AttachmentsConverted.Add(attachmentGuid);
+                                            // Upload to media Library here and get new Guid
+                                            if (!_trackingDictionaries.FileGuidToNewUrl.ContainsKey(attachmentGuid))
+                                            {
+                                                // Upload to media file HERE
+                                                if(!CloneAttachmentToMediaFile(attachmentGuid))
+                                                {
+                                                    conversionItem.AttachmentConversionFailures.Add(attachmentGuid);
+                                                    switch (_settings.AttachmentFailureForUrl)
+                                                    {
+                                                        case MediaMissingMode.Leave:
+                                                            break;
+                                                        case MediaMissingMode.SetToMediaNotFoundGuid:
+                                                            value = value.Replace($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[_settings.MediaNotFoundGuid] + extension);
+                                                            itemsTouched++;
+                                                            break;
+                                                    }
+                                                    continue;
+                                                }
+                                            }
+
+                                            // Only replace first in case other groups in mix.
+                                            value = value.ReplaceFirst($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[attachmentGuid] + extension);
+                                            itemsTouched++;
+                                            conversionItem.AttachmentsConverted.Add(attachmentGuid);
+                                        } else
+                                        {
+                                            conversionItem.MediaNotFound.Add(path);
+                                            switch (_settings.MediaMissing)
+                                            {
+                                                case MediaMissingMode.Leave:
+                                                    break;
+                                                case MediaMissingMode.SetToMediaNotFoundGuid:
+                                                    value = value.Replace($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[_settings.MediaNotFoundGuid] + extension);
+                                                    itemsTouched++;
+                                                    break;
+                                            }
+                                        }
                                     }
                                     else
                                     {
                                         conversionItem.MediaNotFound.Add(path);
+                                        switch (_settings.MediaMissing)
+                                        {
+                                            case MediaMissingMode.Leave:
+                                                break;
+                                            case MediaMissingMode.SetToMediaNotFoundGuid:
+                                                value = value.Replace($"{path}{extension}", _trackingDictionaries.FileGuidToNewUrl[_settings.MediaNotFoundGuid] + extension);
+                                                itemsTouched++;
+                                                break;
+                                        }
                                     }
                                 }
                             }
@@ -308,26 +500,126 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             }
         }
 
-        private void CloneAttachmentToMediaFile(Guid attachmentGuid)
+        /// <summary>
+        /// Clones the attachment, returns false if it could not create due to missing binary data.
+        /// </summary>
+        /// <param name="attachmentGuid"></param>
+        /// <returns></returns>
+        private bool CloneAttachmentToMediaFile(Guid attachmentGuid)
         {
-            var attachment = AttachmentInfoProvider.GetAttachments().WhereEquals(nameof(AttachmentInfo.AttachmentGUID), attachmentGuid).TypedResult.FirstOrDefault(); ;
+            // Using a query becuase the attachment binary isn't setting, even when constructing using the dr...
+            var dr = ConnectionHelper.ExecuteQuery(@"
+select COALESCE(SKS.KeyValue, SKG.KeyValue) as AttachmentFolder,
+SiteName,
+NodeAliasPath,
+CMS_Attachment.* from CMS_Attachment
+inner join View_CMS_Tree_Joined on DocumentID = AttachmentDocumentID
+inner join CMS_Site on SiteID = NodeSiteID
+left join CMS_SettingsKey SKG on SKG.KeyName = 'CMSFilesFolder' and SKG.SiteID is null
+left join CMS_SettingsKey SKS on SKS.KeyName = 'CMSFilesFolder' and SKS.SiteID = NodeSiteID
+where AttachmentGUID = @AttachmentGuid", new QueryDataParameters() { { "@AttachmentGuid", attachmentGuid } }, QueryTypeEnum.SQLQuery).Tables[0].Rows[0];
+            var attachment = new AttachmentInfo(dr);
+            MediaFileInfo newMediaFile = new MediaFileInfo();
+            string siteName = ValidationHelper.GetString(dr["SiteName"], "");
+            string nodeAliasPath = ValidationHelper.GetString(dr["NodeAliasPath"], "");
+            string fileTitle = !string.IsNullOrWhiteSpace(attachment.AttachmentTitle) ? attachment.AttachmentTitle : attachment.AttachmentName;
+            string newPath = $"{siteName}{nodeAliasPath}";
+           
+            string attachmentName = (_settings.LowercaseNewUrls ? attachment.AttachmentName.ToLower() : attachment.AttachmentName);
 
-            var newMediaFile = new MediaFileInfo(ConstructHttpPostedFile(attachment.AttachmentBinary, attachment.AttachmentName, attachment.AttachmentMimeType), _attachmentMediaLibrary.LibraryID, attachment.AttachmentGUID.ToString().Substring(0, 2))
+            // Check path length to shorten for 260 character max
+            string pathCheck = AppDomain.CurrentDomain.BaseDirectory.Replace("\\", "/").Trim('/') + "/"+ newPath;
+
+            // While the limits are 260 for full path and 248 for directory...seems that somewhere it must load it to a temp location and cause issues still. So Adding in a good sized buffer
+            if((pathCheck+attachmentName).Length >= 175){
+                // Path is too long, so use trimmed version
+                newPath = $"{siteName}/path-too-long/{attachmentGuid.ToString().Substring(0, 2)}";
+            }
+            if (_settings.LowercaseNewUrls)
             {
-                FileGUID = attachmentGuid,
-                FileDescription = attachment.AttachmentDescription,
-                FileExtension = attachment.AttachmentExtension,
-                FileSize = attachment.AttachmentSize,
-                FileMimeType = attachment.AttachmentMimeType,
-                FileTitle = attachment.AttachmentTitle,
-            };
+                newPath = newPath.ToLower();
+            }
+
+            if (attachment.AttachmentBinary != null)
+            {
+                newMediaFile = new MediaFileInfo(ConstructHttpPostedFile(attachment.AttachmentBinary, attachmentName, attachment.AttachmentMimeType), _attachmentMediaLibrary.LibraryID, newPath)
+                {
+                    FileGUID = attachmentGuid,
+                    FileExtension = attachment.AttachmentExtension,
+                    FileSize = attachment.AttachmentSize,
+                    FileMimeType = attachment.AttachmentMimeType,
+                    FileTitle = fileTitle
+                };
+            } else
+            {
+                // it's in the file system, get it there
+                string path = ValidationHelper.GetString(dr["AttachmentFolder"], "").Trim('~').TrimEnd('/');
+                // Relative Path
+                if (path.StartsWith("/"))
+                {
+                    path = AppDomain.CurrentDomain.BaseDirectory.Replace("\\","/").Trim('/') + path;
+                }
+                string attachmentGuidStr = attachment.AttachmentGUID.ToString().ToLower();
+                string attachmentPath = $"{attachmentGuidStr.Substring(0, 2)}/{attachmentGuid}{attachment.AttachmentExtension}".ToLower();
+                var possiblePaths = new string[]
+                {
+                    $"{path}/{siteName.ToLower()}/{attachmentPath}".Replace("/","\\"),
+                    $"{path}/{attachmentPath}".Replace("/","\\"),
+                };
+                string foundPath = string.Empty;
+                foreach(var possiblePath in possiblePaths)
+                {
+                    if(File.Exists(possiblePath))
+                    {
+                        foundPath = possiblePath;
+                    }
+                }
+                // can't find
+                if (string.IsNullOrWhiteSpace(foundPath))
+                {
+                    return false;
+                }
+
+                // Found
+                newMediaFile = new MediaFileInfo(foundPath, _attachmentMediaLibrary.LibraryID, newPath)
+                {
+                    FileGUID = attachmentGuid,
+                    FileExtension = attachment.AttachmentExtension,
+                    FileSize = attachment.AttachmentSize,
+                    FileMimeType = attachment.AttachmentMimeType,
+                    FileTitle = fileTitle,
+                };
+                newMediaFile.FileName = attachmentName;
+            }
+            if(!string.IsNullOrWhiteSpace(attachment.AttachmentDescription))
+            {
+                newMediaFile.FileDescription = attachment.AttachmentDescription;
+            }
+            if(attachment.AttachmentImageWidth > 0)
+            {
+                newMediaFile.FileImageWidth = attachment.AttachmentImageWidth;
+            }
+            if(attachment.AttachmentImageHeight > 0)
+            {
+                newMediaFile.FileImageHeight = attachment.AttachmentImageHeight;
+            }
+
             foreach (var columnName in attachment.AttachmentCustomData.ColumnNames)
             {
                 newMediaFile.FileCustomData.SetValue(columnName, attachment.AttachmentCustomData[columnName]);
             }
 
-            // Save the media file
-            MediaFileInfoProvider.SetMediaFileInfo(newMediaFile);
+            try
+            {
+                // Save the media file
+                MediaFileInfoProvider.SetMediaFileInfo(newMediaFile);
+            } catch(PathTooLongException ex)
+            {
+                EventLogProvider.LogEvent("E", "MediaLibraryMigrationScanner", "AttachmentPathTooLong", eventDescription: $"Could not make a path short enough for the system's max path length, tried {newPath}");
+                // Try shorter path?
+                return false;
+            }
+
 
             // Add this attachment to media library item
             var attachmentIdToGuid = new AttachmentIDToGuidCloneInfo()
@@ -343,8 +635,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                 newUrl = newUrl.ToLower();
             }
             // Add to the dictionaries
-            _trackingDictionaries.AttachmentGuidToMediaGuid.Add(attachmentGuid, newMediaFile.FileGUID);
             _trackingDictionaries.FileGuidToNewUrl.Add(newMediaFile.FileGUID, newUrl);
+            
+            return true;
         }
 
         public HttpPostedFile ConstructHttpPostedFile(byte[] data, string filename, string contentType)
@@ -426,7 +719,7 @@ left join CMS_SettingsKey GlobalSKSiteFolder on GlobalSKSiteFolder.KeyName = 'CM
                 string path = ValidationHelper.GetString(row["FileFullPath"], "").ToLower();
 
                 // Encoding is...hard.  Spaces to %20, then UrlEncode to handle foreign characters, then undo the encoding on the / and revert %2520 back to %20
-                string encodedPath = HttpUtility.UrlEncode(path.Replace(" ", "%20")).Replace("%2520", "%20").Replace("%2f", "/");
+                string encodedPath = HttpUtility.UrlEncode(path.Replace(" ", "%20")).Replace("%2520", "%20").Replace("%2f", "/").ToLower();
                 string prefix = ValidationHelper.GetString(row["Prefix"], "").ToLower();
                 Guid mediaFileGuid = ValidationHelper.GetGuid(row["FileGuid"], Guid.Empty);
                 string newUrl = $"/getmedia/{mediaFileGuid}/{ValidationHelper.GetString(row["FileName"], string.Empty)}";
@@ -458,18 +751,20 @@ left join CMS_SettingsKey GlobalSKSiteFolder on GlobalSKSiteFolder.KeyName = 'CM
             // Get configurations next
             var allConfigurations = FileLocationConfigurationInfoProvider.GetFileLocationConfigurations().TypedResult.GroupBy(x => $"{x.TableName.Replace("[", "")}|{x.TableDBSchema.Replace("[", "")}|{x.TableColumnName.Replace("[", "")}".ToLower())
                 .ToDictionary(key => key.Key, value => value.First().FileLocationConfigurationID);
-            var attachmentGuidToMediaGuid = AttachmentIDToGuidCloneInfoProvider.GetAttachmentIDToGuidClones()
-                .Source(x => x.InnerJoin<AttachmentInfo>(nameof(AttachmentIDToGuidCloneInfo.AttachmentIDToGuidCloneAttachmentID), nameof(AttachmentInfo.AttachmentID)))
-                .Columns(nameof(AttachmentInfo.AttachmentGUID), nameof(AttachmentIDToGuidCloneInfo.AttachmentIDToGuidCloneAttachmentGuid))
-                .Result.Tables[0].Rows.Cast<DataRow>().GroupBy(x => (Guid)x[nameof(AttachmentInfo.AttachmentGUID)]).ToDictionary(key => key.Key, value => (Guid)value.First()[nameof(AttachmentIDToGuidCloneInfo.AttachmentIDToGuidCloneAttachmentGuid)]);
+        
+            var allAttachmentGuids = AttachmentInfoProvider.GetAttachments()
+                .Columns(nameof(AttachmentInfo.AttachmentGUID))
+                .TypedResult.GroupBy(x => x.AttachmentGUID)
+                .ToDictionary(key => key.Key, value => true);
 
             var mediaGuidToFileTrackingID = FileTrackingInfoProvider.GetFileTrackings()
                 .Source(x => x.InnerJoin<MediaFileInfo>(nameof(FileTrackingInfo.FileTrackingMediaID), nameof(MediaFileInfo.FileID)))
                 .Columns(nameof(MediaFileInfo.FileGUID), nameof(FileTrackingInfo.FileTrackingID))
                 .Result.Tables[0].Rows.Cast<DataRow>().GroupBy(x => (Guid)x[nameof(MediaFileInfo.FileGUID)]).ToDictionary(key => key.Key, value => (int)value.First()[nameof(FileTrackingInfo.FileTrackingID)]);
 
-            return new MediaTrackingDictionaries(fullPathDictionary, encodedPathDictionary, fileGuidToNewUrl, allMediaPrefixes.Keys.ToList(), attachmentGuidToMediaGuid, allConfigurations, mediaGuidToFileTrackingID);
+            return new MediaTrackingDictionaries(fullPathDictionary, encodedPathDictionary, fileGuidToNewUrl, allMediaPrefixes.Keys.ToList(), allAttachmentGuids, allConfigurations, mediaGuidToFileTrackingID);
         }
 
     }
+   
 }

@@ -37,6 +37,8 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         private readonly Regex _mediaRegex;
         private readonly Regex _attachmentRegex;
         private readonly Regex _getMediaRegex;
+        private readonly Regex _guidRegex;
+
         private readonly IAttachmentInfoProvider _attachmentInfoProvider;
         private readonly MediaLibraryInfo _attachmentMediaLibrary;
         private readonly IMediaFileInfoProvider _mediaFileInfoProvider;
@@ -58,6 +60,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^\?\#\n\r\<\|\^\}}\""\']*\.[^\?\#\n\r\<\|\^\}}\""\' ]*))((\?([^\?\n\r\<\|\^\}}\""\' ]*))|(\#([^\n\r\<\|\^\}}\""\' ]*))){{0,1}}(?=(\<|\||\^|\}}|\""|\'| |$))", RegexOptions.IgnoreCase);
             _attachmentRegex = new Regex(@"(~?((\/getattachment\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
             _getMediaRegex = new Regex(@"(~?((\/getmedia\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})([^\?\#\n\r\<\|\^\}\""\'\ ]*\.{0,1}[^\?\#\n\r\<\|\^\}\""\' ]*))((\?([^\?\n\r\<\|\^\}\""\' ]*))|(\#([^\n\r\<\|\^\}\""\' ]*))){0,1}(?=(\<|\||\^|\}|\""|\'| |$))", RegexOptions.IgnoreCase);
+            _guidRegex = new Regex(@"([0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12})", RegexOptions.IgnoreCase);
 
             _attachmentInfoProvider = CMS.Core.Service.Resolve<IAttachmentInfoProvider>();
             if (_settings.ConvertAttachments)
@@ -422,7 +425,8 @@ left join CMS_SettingsKey GlobalSKSiteFolder on GlobalSKSiteFolder.KeyName = 'CM
             foreach (var row in rows)
             {
                 string path = ValidationHelper.GetString(row["FileFullPath"], "").ToLower();
-                string encodedPath = HttpUtility.UrlEncode(path);
+                // Encoding is...hard.  Spaces to %20, then UrlEncode to handle foreign characters, then undo the encoding on the / and revert %2520 back to %20
+                string encodedPath = HttpUtility.UrlEncode(path.Replace(" ", "%20")).Replace("%2520", "%20").Replace("%2f", "/").ToLower();
                 string prefix = ValidationHelper.GetString(row["Prefix"], "").ToLower();
                 Guid mediaFileGuid = ValidationHelper.GetGuid(row["FileGuid"], Guid.Empty);
                 string newUrl = $"/getmedia/{mediaFileGuid}/{ValidationHelper.GetString(row["FileName"], string.Empty)}";

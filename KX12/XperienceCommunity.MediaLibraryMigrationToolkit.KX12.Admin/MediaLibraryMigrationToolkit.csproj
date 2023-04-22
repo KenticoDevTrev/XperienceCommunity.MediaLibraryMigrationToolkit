@@ -454,13 +454,17 @@
     <Compile Include="Classes\Base\MediaFileCloneInfoProvider.cs" />
     <Compile Include="Classes\Binding\FileFindingResultInfo.cs" />
     <Compile Include="Classes\Binding\FileFindingResultInfoProvider.cs" />
+    <Compile Include="Classes\Custom\ConversionSaveException.cs" />
     <Compile Include="Classes\Custom\MediaConversionObject.cs" />
     <Compile Include="Classes\Custom\MediaConversionObjectItem.cs" />
     <Compile Include="Classes\Custom\MediaFileObjectReference.cs" />
     <Compile Include="Classes\Custom\MediaLibraryMigrationSettings.cs" />
     <Compile Include="Classes\Custom\MediaTrackingDictionaries.cs" />
+    <Compile Include="Helpers\AttachmentSummary.cs" />
+    <Compile Include="Helpers\MediaFindingResult.cs" />
     <Compile Include="Helpers\MediaLibraryMigrationScanner.cs" />
     <Compile Include="Helpers\MediaMigrationFunctions.cs" />
+    <Compile Include="Helpers\MediaSummary.cs" />
     <Compile Include="MediaLibraryMigrationToolkitInitializationModule.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

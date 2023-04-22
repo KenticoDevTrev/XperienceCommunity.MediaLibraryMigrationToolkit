@@ -5,13 +5,13 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public class MediaTrackingDictionaries
     {
-        public MediaTrackingDictionaries(Dictionary<string, Guid> pathToMediaGuid, Dictionary<string, Guid> encodedPathToMediaGuid, Dictionary<Guid, string> fileGuidToNewUrl, List<string> allMediaPrefixes, Dictionary<Guid, Guid> attachmentGuidToMediaGuid, Dictionary<string, int> tableSchemaColumnKeyToConfigurationID, Dictionary<Guid, int> fileGuidToFileTrackingID)
+        public MediaTrackingDictionaries(Dictionary<string, Guid> pathToMediaGuid, Dictionary<string, Guid> encodedPathToMediaGuid, Dictionary<Guid, string> fileGuidToNewUrl, List<string> allMediaPrefixes, Dictionary<Guid, bool> allAttachmentGuids, Dictionary<string, int> tableSchemaColumnKeyToConfigurationID, Dictionary<Guid, int> fileGuidToFileTrackingID)
         {
             PathToMediaGuid = pathToMediaGuid;
             EncodedPathToMediaGuid = encodedPathToMediaGuid;
             FileGuidToNewUrl = fileGuidToNewUrl;
             AllMediaPrefixes = allMediaPrefixes;
-            AttachmentGuidToMediaGuid = attachmentGuidToMediaGuid;
+            AllAttachmentGuids = allAttachmentGuids;
             TableSchemaColumnKeyToConfigurationID = tableSchemaColumnKeyToConfigurationID;
             FileGuidToFileTrackingID = fileGuidToFileTrackingID;
         }
@@ -20,7 +20,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         public Dictionary<string, Guid> PathToMediaGuid { get; set; } = new Dictionary<string, Guid>();
         public Dictionary<string, Guid> EncodedPathToMediaGuid { get; set; } = new Dictionary<string, Guid>();
         public Dictionary<Guid, string> FileGuidToNewUrl { get; set; } = new Dictionary<Guid, string>();
-        public Dictionary<Guid, Guid> AttachmentGuidToMediaGuid { get; set; } = new Dictionary<Guid, Guid>();
+        public Dictionary<Guid, bool> AllAttachmentGuids { get; }
         public Dictionary<string, int> TableSchemaColumnKeyToConfigurationID { get; set; } = new Dictionary<string, int>();
         public Dictionary<Guid, int> FileGuidToFileTrackingID { get; set; } = new Dictionary<Guid, int>();
     }

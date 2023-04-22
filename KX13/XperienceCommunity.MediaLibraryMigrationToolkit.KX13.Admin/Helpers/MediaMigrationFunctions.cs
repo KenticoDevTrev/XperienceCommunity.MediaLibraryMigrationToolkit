@@ -26,6 +26,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         /// <returns></returns>
         public static IEnumerable<MediaConversionObject> GetFileLocationConfigurations(IEnumerable<int> configurationIds)
         {
+            var guidType = typeof(Guid);
             var keyToMediaConversionObject = new Dictionary<string, MediaConversionObject>();
 
             var _fileLocationConfigurationInfoProvider = Service.Resolve<IFileLocationConfigurationInfoProvider>();
@@ -65,7 +66,13 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                     foreach(var column in mediaConversionObject.ColumnsToCheck)
                     {
                         if (dr[column] != null && dr[column] != DBNull.Value) {
-                            newItem.ColumnToValue.Add(column, ValidationHelper.GetString(dr[column], string.Empty));
+                            if (dr[column].GetType() == guidType)
+                            {
+                                newItem.GuidValuesFound.Add((Guid)dr[column]);
+                            }
+                            else { 
+                                newItem.ColumnToValue.Add(column, ValidationHelper.GetString(dr[column], string.Empty));
+                            }
                         } else
                         {
                             newItem.ColumnToValue.Add(column, null);

@@ -27,7 +27,7 @@ namespace MediaLibraryMigrationToolkit
         /// <summary>
         /// Type information.
         /// </summary>
-        public static readonly ObjectTypeInfo TYPEINFO = new ObjectTypeInfo(typeof(Media_FileCloneInfoProvider), OBJECT_TYPE, "MediaLibraryMigrationToolkit.Media_FileClone", "Media_FileID", "Media_FileLastModified", "FileGUID", null, null, null, "FileSiteID", null, null)
+        public static readonly ObjectTypeInfo TYPEINFO = new ObjectTypeInfo(typeof(Media_FileCloneInfoProvider), OBJECT_TYPE, "MediaLibraryMigrationToolkit.Media_FileClone", "Media_FileID", "Media_FileLastModified", "FileGUID", null, "FileName", null, "FileSiteID", null, null)
         {
             ModuleName = "MediaLibraryMigrationToolkit",
             TouchCacheDependencies = true,
@@ -39,7 +39,7 @@ namespace MediaLibraryMigrationToolkit
                 new ObjectDependency("FileModifiedByUserID", "cms.user", ObjectDependencyEnum.NotRequired),
             },
             LogEvents = false,
-            LogIntegration = false,
+            LogIntegration = false
         };
 
 
@@ -106,7 +106,75 @@ namespace MediaLibraryMigrationToolkit
             }
             set
             {
-                SetValue("NewFileID", value);
+                SetValue("NewFileID", value, 0);
+            }
+        }
+
+
+        /// <summary>
+        /// If true, then a scan of the database was performed and this was not found.  .
+        /// </summary>
+        [DatabaseField]
+        public virtual bool UsageChecked
+        {
+            get
+            {
+                return ValidationHelper.GetBoolean(GetValue("UsageChecked"), false);
+            }
+            set
+            {
+                SetValue("UsageChecked", value);
+            }
+        }
+
+
+        /// <summary>
+        /// If true, then somewhere there is a reference to this media file's guid..
+        /// </summary>
+        [DatabaseField]
+        public virtual bool FoundUsage
+        {
+            get
+            {
+                return ValidationHelper.GetBoolean(GetValue("FoundUsage"), false);
+            }
+            set
+            {
+                SetValue("FoundUsage", value);
+            }
+        }
+
+
+        /// <summary>
+        /// If true, this file should be kept (and moved to blob storage if applicable).
+        /// </summary>
+        [DatabaseField]
+        public virtual bool KeepFile
+        {
+            get
+            {
+                return ValidationHelper.GetBoolean(GetValue("KeepFile"), false);
+            }
+            set
+            {
+                SetValue("KeepFile", value);
+            }
+        }
+
+
+        /// <summary>
+        /// If true, this file has been migrated to blob storage..
+        /// </summary>
+        [DatabaseField]
+        public virtual bool Processed
+        {
+            get
+            {
+                return ValidationHelper.GetBoolean(GetValue("Processed"), false);
+            }
+            set
+            {
+                SetValue("Processed", value);
             }
         }
 
@@ -197,35 +265,18 @@ namespace MediaLibraryMigrationToolkit
 
 
         /// <summary>
-        /// Old file path.
+        /// File path.
         /// </summary>
         [DatabaseField]
-        public virtual string OldFilePath
+        public virtual string FilePath
         {
             get
             {
-                return ValidationHelper.GetString(GetValue("OldFilePath"), String.Empty);
+                return ValidationHelper.GetString(GetValue("FilePath"), String.Empty);
             }
             set
             {
-                SetValue("OldFilePath", value, String.Empty);
-            }
-        }
-
-
-        /// <summary>
-        /// New file path.
-        /// </summary>
-        [DatabaseField]
-        public virtual string NewFilePath
-        {
-            get
-            {
-                return ValidationHelper.GetString(GetValue("NewFilePath"), String.Empty);
-            }
-            set
-            {
-                SetValue("NewFilePath", value);
+                SetValue("FilePath", value);
             }
         }
 

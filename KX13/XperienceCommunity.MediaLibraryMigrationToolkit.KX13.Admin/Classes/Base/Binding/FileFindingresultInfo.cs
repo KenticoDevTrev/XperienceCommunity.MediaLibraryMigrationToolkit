@@ -16,7 +16,7 @@ namespace MediaLibraryMigrationToolkit
     /// Data container class for <see cref="FileFindingResultInfo"/>.
     /// </summary>
     [Serializable]
-    public partial class FileFindingResultInfo : AbstractInfo<FileFindingResultInfo>
+    public partial class FileFindingResultInfo : AbstractInfo<FileFindingResultInfo, IFileFindingResultInfoProvider>
     {
         /// <summary>
         /// Object type.
@@ -35,7 +35,6 @@ namespace MediaLibraryMigrationToolkit
             {
                 new ObjectDependency("FileFindingResultTableConfigurationID", "medialibrarymigrationtoolkit.filelocationconfiguration", ObjectDependencyEnum.Required),
             },
-            ContainsMacros = false,
             LogEvents = false,
             LogIntegration = false,
         };
@@ -148,7 +147,7 @@ namespace MediaLibraryMigrationToolkit
         /// </summary>
         protected override void DeleteObject()
         {
-            FileFindingResultInfoProvider.DeleteFileFindingResultInfo(this);
+            Provider.Delete(this);
         }
 
 
@@ -157,7 +156,7 @@ namespace MediaLibraryMigrationToolkit
         /// </summary>
         protected override void SetObject()
         {
-            FileFindingResultInfoProvider.SetFileFindingResultInfo(this);
+            Provider.Set(this);
         }
 
 

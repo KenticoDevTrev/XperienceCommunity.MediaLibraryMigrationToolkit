@@ -442,14 +442,8 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Classes\Base\AttachmentIDToGuidCloneInfo.cs" />
-    <Compile Include="Classes\Base\AttachmentIDToGuidCloneInfoProvider.cs" />
-    <Compile Include="Classes\Base\AttachmentTrackingInfo.cs" />
-    <Compile Include="Classes\Base\AttachmentTrackingInfoProvider.cs" />
     <Compile Include="Classes\Base\FileLocationConfigurationInfo.cs" />
     <Compile Include="Classes\Base\FileLocationConfigurationInfoProvider.cs" />
-    <Compile Include="Classes\Base\FileTrackingInfo.cs" />
-    <Compile Include="Classes\Base\FileTrackingInfoProvider.cs" />
     <Compile Include="Classes\Base\MediaFileCloneInfo.cs" />
     <Compile Include="Classes\Base\MediaFileCloneInfoProvider.cs" />
     <Compile Include="Classes\Binding\FileFindingResultInfo.cs" />

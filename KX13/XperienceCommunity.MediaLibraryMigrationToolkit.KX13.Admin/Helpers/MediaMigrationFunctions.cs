@@ -13,7 +13,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
     public static class MediaMigrationFunctions
     {
-      
+
 
         public static IEnumerable<MediaConversionObject> GetFileLocationConfigurations()
         {
@@ -28,10 +28,9 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         {
             var guidType = typeof(Guid);
             var keyToMediaConversionObject = new Dictionary<string, MediaConversionObject>();
-
             var _fileLocationConfigurationInfoProvider = Service.Resolve<IFileLocationConfigurationInfoProvider>();
             var query = _fileLocationConfigurationInfoProvider.Get();
-            if(configurationIds.Any())
+            if (configurationIds.Any())
             {
                 query.WhereIn(nameof(FileLocationConfigurationInfo.FileLocationConfigurationID), configurationIds.ToArray());
             }
@@ -42,7 +41,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                 string idColumn = SqlHelper.EscapeQuotes(configuration.TableIdentifierColumn.Replace("[", "").Replace("]", "")).ToLower();
                 string column = SqlHelper.EscapeQuotes(configuration.TableColumnName.Replace("[", "").Replace("]", "")).ToLower();
                 string key = $"{tableName}|{schema}".ToLower();
-                if(!keyToMediaConversionObject.ContainsKey(key))
+                if (!keyToMediaConversionObject.ContainsKey(key))
                 {
                     keyToMediaConversionObject.Add(key, new MediaConversionObject(tableName, schema, idColumn));
                 }
@@ -50,10 +49,10 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                 conversionObj.ColumnsToCheck.Add(column);
             }
 
-           var mediaConversionObjects = keyToMediaConversionObject.Values.ToList();
+            var mediaConversionObjects = keyToMediaConversionObject.Values.ToList();
 
             // Now fill all the items
-            foreach(var mediaConversionObject in mediaConversionObjects)
+            foreach (var mediaConversionObject in mediaConversionObjects)
             {
                 string sql = mediaConversionObject.GetItemsSql();
                 var items = ConnectionHelper.ExecuteQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery, false).Tables[0].Rows.Cast<DataRow>();
@@ -63,17 +62,20 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                     {
                         ID = (int)dr[mediaConversionObject.RowIDColumn]
                     };
-                    foreach(var column in mediaConversionObject.ColumnsToCheck)
+                    foreach (var column in mediaConversionObject.ColumnsToCheck)
                     {
-                        if (dr[column] != null && dr[column] != DBNull.Value) {
+                        if (dr[column] != null && dr[column] != DBNull.Value)
+                        {
                             if (dr[column].GetType() == guidType)
                             {
-                                newItem.GuidValuesFound.Add((Guid)dr[column]);
+                                newItem.ColumnToGuidValue.Add(column, (Guid)dr[column]);
                             }
-                            else { 
+                            else
+                            {
                                 newItem.ColumnToValue.Add(column, ValidationHelper.GetString(dr[column], string.Empty));
                             }
-                        } else
+                        }
+                        else
                         {
                             newItem.ColumnToValue.Add(column, null);
                         }
@@ -122,7 +124,7 @@ FilePermanentUrl as FileTrackingPermanentUrl,
 0 as FileTrackingPreserved
 from (
 SELECT FileID, Prefix+FilePath as FileTrackingOriginalUrl, FileGUID,  '/getmedia/'+cast(FileGuid as nvarchar(50))+'/'+FileName as FilePermanentUrl from (
-select FileID, FileGuid, FileName+'.'+FileExtension as FileName,
+select FileID, FileGuid, FileName+FileExtension as FileName,
 case when NULLIF(COALESCE(GlobalSKFolder.KeyValue, SiteSKFolder.KeyValue), '') is null 
 	then
 		'/'+SiteName+'/media' 
@@ -144,6 +146,95 @@ where FileID not in (select FileTrackingMediaID from MediaLibraryMigrationToolki
 
 delete from MediaLibraryMigrationToolkit_FileTracking where FileTrackingMediaID not in (Select FileID from Media_File)";
             ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+        }
+
+
+        public static DataSet GetDataSetOfMediaResultsForDataExportHelper(MediaFindingResult findingResults)
+        {
+            // Create DataTabe of the results
+            DataSet ds = new DataSet();
+            DataTable dt = new DataTable("MediaFindingResults");
+            dt.Columns.AddRange(new DataColumn[]
+            {
+                new DataColumn("IsAttachment", typeof(bool)),
+                new DataColumn("Occurrences", typeof(int)),
+                new DataColumn("ID", typeof(int)),
+                new DataColumn("GUID", typeof(string)),
+                new DataColumn("Name", typeof(string)),
+                new DataColumn("Path", typeof(string)),
+                new DataColumn("CultureOrLibraryName", typeof(string)),
+                new DataColumn("LastModified", typeof(DateTime))
+            });
+
+            foreach (var attachment in findingResults.AllAttachments.Values)
+            {
+                var dr = dt.NewRow();
+                dr["IsAttachment"] = true;
+                dr["Occurrences"] = attachment.TotalOccurrences;
+                dr["ID"] = attachment.AttachmentID;
+                dr["GUID"] = attachment.AttachmentGuid;
+                dr["Name"] = attachment.AttachmentName;
+                dr["Path"] = attachment.NodeAliasPath;
+                dr["CultureOrLibraryName"] = attachment.DocumentCulture;
+                dr["LastModified"] = attachment.LastModified;
+                dt.Rows.Add(dr);
+            }
+
+            foreach (var mediaFile in findingResults.AllMediaFiles.Values)
+            {
+                var dr = dt.NewRow();
+                dr["IsAttachment"] = false;
+                dr["Occurrences"] = mediaFile.TotalOccurrences;
+                dr["ID"] = mediaFile.MediaFileID;
+                dr["GUID"] = mediaFile.MediaGuid;
+                dr["Name"] = mediaFile.MediaName;
+                dr["Path"] = mediaFile.MediaPath;
+                dr["CultureOrLibraryName"] = mediaFile.LibraryName;
+                dr["LastModified"] = mediaFile.LastModified;
+                dt.Rows.Add(dr);
+            }
+
+            ds.Tables.Add(dt);
+
+            return ds;
+        }
+
+        /// <summary>
+        /// Adds any new Media Files to the Media File Clone table
+        /// </summary>
+        public static void UpdateMediaCloneTable()
+        {
+            string sql = @"
+insert into [MediaLibraryMigrationToolkit_Media_File]
+select
+GETDATE() as [Media_FileLastModified],
+FileID as [OldFileID]
+           ,null as [NewFileID]
+           ,[FileName]
+           ,[FileTitle]
+           ,[FileDescription]
+           ,[FileExtension]
+           ,[FileMimeType]
+           ,[FileSize]
+           ,[FileImageWidth]
+           ,[FileImageHeight]
+           ,[FileGUID]
+           ,[FileLibraryID]
+           ,[FileSiteID]
+           ,[FileCreatedByUserID]
+           ,[FileCreatedWhen]
+           ,[FileModifiedByUserID]
+           ,[FileModifiedWhen]
+           ,[FileCustomData]
+           ,[FilePath]
+           ,0 as [FoundUsage]
+           ,0 as [KeepFile]
+           ,0 as [Processed]
+		   ,0 As [UsageChecked]
+		   from Media_File MF
+		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
+            ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+
         }
     }
 }

@@ -10,7 +10,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             Table = table;
             Schema = schema;
             RowIDColumn = rowIDColumn;
-            
+
         }
 
         public string Table { get; set; }

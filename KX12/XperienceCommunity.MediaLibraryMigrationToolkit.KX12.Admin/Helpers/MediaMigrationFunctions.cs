@@ -205,7 +205,7 @@ FileID as [OldFileID]
       ,[FileModifiedByUserID] = CMF.FileModifiedByUserID
       ,[FileModifiedWhen] = CMF.FileModifiedWhen
       ,[FileCustomData] = CMF.FileCustomData
-  FROM [Welbilt_kentico_staging].[dbo].[MediaLibraryMigrationToolkit_Media_File] CMF
+  FROM [MediaLibraryMigrationToolkit_Media_File] CMF
   inner join Media_File MF on MF.FileGUID = CMF.FileGUID
   where MF.FileModifiedWhen > CMF.Media_FileLastModified";
             ConnectionHelper.ExecuteNonQuery(updateSql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
@@ -429,7 +429,7 @@ DocumentID not in
                 {
                     var siblingSql = $@"
 SELECT count(*) as siblings
-  FROM [Welbilt_kentico_staging].[dbo].[Media_File] MF
+  FROM [Media_File] MF
   inner join MediaLibraryMigrationToolkit_Media_File CMF on MF.FileGUID = CMF.FileGUID
   where Processed = 1 and CMF.FileLibraryID = {fileCloneData.FileLibraryID} and REPLACE(REPLACE(CMF.FilePath, '/'+CMF.FileName+CMF.FileExtension, ''), CMF.FileName+CMF.FileExtension, '') = '{newPath}'
   ";

@@ -1,6 +1,11 @@
 # XperienceCommunity.MediaLibraryMigrationToolkit
 Helps migrate media library files off of database/on premise file storage and onto cloud storage (azure blob storage).
 
+# STATUS
+This project is still in processes.  The code files should be up to date, and this has been successfully used on a project, the UI for it has not been fully fleshed out. 
+
+If you need this functionality before i can finish things up, please contact me at tfayas at gmail.
+
 # How it works
 There are two primary operations this tool performs:
 

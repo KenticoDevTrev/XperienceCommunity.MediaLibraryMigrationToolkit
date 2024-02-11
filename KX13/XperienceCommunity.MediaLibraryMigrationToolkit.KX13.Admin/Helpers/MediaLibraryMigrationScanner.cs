@@ -1,9 +1,11 @@
-﻿using CMS.Base.UploadExtensions;
+﻿using CMS.AmazonStorage;
+using CMS.Base.UploadExtensions;
 using CMS.Core;
 using CMS.DataEngine;
 using CMS.DocumentEngine;
 using CMS.Helpers;
 using CMS.MediaLibrary;
+using CMS.SiteProvider;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -12,6 +14,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Web;
+using File = System.IO.File;
 
 namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
@@ -43,6 +46,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
         private readonly MediaLibraryMigrationSettings _settings;
         public List<MediaConversionObject> MediaConversionObjects { get; }
         public List<string> SaveErrors { get; set; } = new List<string>();
+        private readonly bool _multipleSitesExist;
 
         public MediaLibraryMigrationScanner(MediaLibraryMigrationSettings settings, IEnumerable<MediaConversionObject> mediaConversionObjects)
         {
@@ -51,7 +55,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             _trackingDictionaries = MediaMigrationFunctions.GetMediaTrackingDictionaries(settings.LowercaseNewUrls);
             _mediaFileInfoProvider = Service.Resolve<IMediaFileInfoProvider>();
             _eventLogProvider = Service.Resolve<IEventLogService>();
-            
+
             if (_settings.MediaMissing == MediaMissingMode.SetToMediaNotFoundGuid || _settings.AttachmentFailureForGuidColumn == AttachmentFailureMode.SetToMediaNotFoundGuid)
             {
                 if (!_trackingDictionaries.FileGuidToNewUrl.ContainsKey(_settings.MediaNotFoundGuid))
@@ -74,7 +78,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             var queryToEnd = $@"((\?([^{string.Join("", allCharsExceptHash)}]*))|(\#([^{string.Join("", allCharsExceptQuestionHash)}]*))){{0,1}}(?=({string.Join("|", allCharsExceptQuestionHash)}|$))";
             var fileName = $@"[^{string.Join("", allChars)}]*\.{{0,1}}[^{string.Join("", allChars)}]*";
 
-            _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^{string.Join("", allChars)}]*\.[^{string.Join("", allChars)}]*)){queryToEnd}", RegexOptions.IgnoreCase);
+            _mediaRegex = new Regex($@"(~?({allPrefixMatches})([^{string.Join("", allChars.Except(new string[] { " " }))}]*\.[^{string.Join("", allChars)}]*)){queryToEnd}", RegexOptions.IgnoreCase);
             _attachmentByPathRegex = new Regex($@"(~?(\/getattachment\/)([^{string.Join("", allChars)}]*\.[^{string.Join("", allChars)}]*)){queryToEnd}", RegexOptions.IgnoreCase);
             _attachmentRegex = new Regex($@"(~?((\/getattachment\/))([0-9A-F]{{8}}[-]?(?:[0-9A-F]{{4}}[-]?){{3}}[0-9A-F]{{12}})(\/{fileName})){queryToEnd}", RegexOptions.IgnoreCase);
             _getMediaRegex = new Regex($@"(~?((\/getmedia\/))([0-9A-F]{8}[-]?(?:[0-9A-F]{{4}}[-]?){{3}}[0-9A-F]{{12}})(\/{fileName})){queryToEnd}", RegexOptions.IgnoreCase);
@@ -95,6 +99,8 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
                 }
             }
             MediaConversionObjects = mediaConversionObjects.ToList();
+
+            _multipleSitesExist = Service.Resolve<ISiteInfoProvider>().Get().Count > 1;
 
         }
 
@@ -135,19 +141,36 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             {
                 foreach (var mediaConversionItem in mediaConversionObject.Items)
                 {
-                    string configurationKey = $"{mediaConversionObject.Table}|{mediaConversionObject.Schema}|{mediaConversionItem.ColumnToValue}".ToLower();
-                    if (_trackingDictionaries.TableSchemaColumnKeyToConfigurationID.ContainsKey(configurationKey))
+                    foreach (var columnKey in mediaConversionItem.ColumnToValue.Keys)
                     {
-                        int configurationID = _trackingDictionaries.TableSchemaColumnKeyToConfigurationID[configurationKey];
+                        string configurationKey = $"{mediaConversionObject.Table}|{mediaConversionObject.Schema}|{columnKey}".ToLower();
+                        if (_trackingDictionaries.TableSchemaColumnKeyToConfigurationID.ContainsKey(configurationKey))
+                        {
+                            int configurationID = _trackingDictionaries.TableSchemaColumnKeyToConfigurationID[configurationKey];
 
-                        var trackingAndCount = mediaConversionItem.MediaFilesFound.Union(mediaConversionItem.MediaFilesUpdated)
-                            .GroupBy(x => x)
-                            .ToDictionary(key => key.Key, value => value.Count());
-                        configurationIDToFileGuidToCount.Add(configurationID, trackingAndCount);
-                    }
-                    else
-                    {
-                        throw new Exception($"Could not find table schema column key with vale {configurationKey}, something went wrong.");
+                            var trackingAndCount = mediaConversionItem.MediaFilesFound.Union(mediaConversionItem.MediaFilesUpdated)
+                                .GroupBy(x => x)
+                                .ToDictionary(key => key.Key, value => value.Count());
+                            if (!configurationIDToFileGuidToCount.ContainsKey(configurationID))
+                            {
+                                configurationIDToFileGuidToCount.Add(configurationID, new Dictionary<Guid, int>());
+
+                            }
+
+                            var tracking = configurationIDToFileGuidToCount[configurationID];
+                            foreach (var key in trackingAndCount.Keys)
+                            {
+                                if (!tracking.ContainsKey(key))
+                                {
+                                    tracking.Add(key, 0);
+                                }
+                                tracking[key] += trackingAndCount[key];
+                            }
+                        }
+                        else
+                        {
+                            throw new Exception($"Could not find table schema column key with vale {configurationKey}, something went wrong.");
+                        }
                     }
 
                 }
@@ -159,8 +182,8 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             foreach (int configurationId in configurationIDToFileGuidToCount.Keys)
             {
                 var trackingToCount = configurationIDToFileGuidToCount[configurationId];
-                sqlDelete.AddRange(trackingToCount.Select(x => $"delete from MediaLibraryMigrationToolkit_FileFindingResult where FileTracking FileFindingResultMediaGuid = {x.Key} and FileFindingResultTableConfigurationID = {configurationId}"));
-                sqlInsert.AddRange(trackingToCount.Select(x => $"INSERT INTO [dbo].[MediaLibraryMigrationToolkit_FileFindingResult] ([FileFindingResultGuid],[FileFindingResultLastModified],[FileFindingResultMediaGuid],[FileFindingResultTableConfigurationID],[FileFindingResultCount]) VALUES (NEWID(),GETDATE(),{x.Key},{configurationId},{x.Value})"));
+                sqlDelete.AddRange(trackingToCount.Select(x => $"delete from MediaLibraryMigrationToolkit_FileFindingResult where FileFindingResultMediaGuid = '{x.Key}' and FileFindingResultTableConfigurationID = {configurationId}"));
+                sqlInsert.AddRange(trackingToCount.Select(x => $"INSERT INTO [dbo].[MediaLibraryMigrationToolkit_FileFindingResult] ([FileFindingResultGuid],[FileFindingResultLastModified],[FileFindingResultMediaGuid],[FileFindingResultTableConfigurationID],[FileFindingResultCount]) VALUES (NEWID(),GETDATE(),'{x.Key}',{configurationId},{x.Value})"));
             }
 
             // Runs statements
@@ -660,19 +683,31 @@ where AttachmentGUID = @AttachmentGuid", new QueryDataParameters() { { "@Attachm
             string siteName = ValidationHelper.GetString(dr["SiteName"], "");
             string nodeAliasPath = ValidationHelper.GetString(dr["NodeAliasPath"], "");
             string fileTitle = !string.IsNullOrWhiteSpace(attachment.AttachmentTitle) ? attachment.AttachmentTitle : attachment.AttachmentName;
-            string newPath = $"{siteName}{nodeAliasPath}";
+            string newPath = $"{(_multipleSitesExist ? siteName : "")}{nodeAliasPath}".Trim('/');
 
-            string attachmentName = (_settings.LowercaseNewUrls ? attachment.AttachmentName.ToLower() : attachment.AttachmentName);
+            string attachmentName = URLHelper.GetSafeFileName((_settings.LowercaseNewUrls ? attachment.AttachmentName.ToLower() : attachment.AttachmentName), siteName);
 
-            // Check path length to shorten for 260 character max
-            string pathCheck = AppDomain.CurrentDomain.BaseDirectory.Replace("\\", "/").Trim('/') + "/" + newPath;
-
-            // While the limits are 260 for full path and 248 for directory...seems that somewhere it must load it to a temp location and cause issues still. So Adding in a good sized buffer
-            if ((pathCheck + attachmentName).Length >= 175)
+            // Make sure the path won't exceed 236, it's 236 instead of 256 because when it eventually uploads to azure it puts it in the /App_Data/AzureTemp/[normalpath], so adds 19 characters (rounded to 20)
+            var maxPathLength = 256 - "/App_Data/AzureTemp/".Length - 1; // Also some cases we ran into a path of 257 still being calculated even with the 20 characters, so one more to make sure it's 256 max.
+            var baseMediaPath = $"{AppDomain.CurrentDomain.BaseDirectory.Replace("\\", "/").Trim('/')}/{siteName}/media/{_attachmentMediaLibrary.LibraryFolder}";
+            // First see if the path allows for the node alias path + at least 40 (guid + extension)
+            if ($"{baseMediaPath}/{newPath}".Length + (attachmentName.Length > _settings.AttachmentTruncateFileNameLengthToPreservePath ? _settings.AttachmentTruncateFileNameLengthToPreservePath : attachmentName.Length) >= maxPathLength)
             {
                 // Path is too long, so use trimmed version
-                newPath = $"{siteName}/path-too-long/{attachmentGuid.ToString().Substring(0, 2)}";
+                newPath = $"{(_multipleSitesExist ? siteName + "/" : "")}path-too-long/{attachmentGuid.ToString().Substring(0, 2)}";
             }
+
+            // Next check the file name length limit
+            if ($"{baseMediaPath}/{newPath}/{attachmentName}".Length >= maxPathLength)
+            {
+                var overage = $"{baseMediaPath}/{newPath}/{attachmentName}".Length - maxPathLength;
+                var parts = attachmentName.Split('.');
+                var fileName = string.Join(".", parts.Take(parts.Length - 1));
+                var extension = parts.Last();
+                // shorten name
+                attachmentName = $"{fileName.Substring(0, fileName.Length - overage)}.{extension}";
+            }
+
             if (_settings.LowercaseNewUrls)
             {
                 newPath = newPath.ToLower();
@@ -694,7 +729,7 @@ where AttachmentGUID = @AttachmentGuid", new QueryDataParameters() { { "@Attachm
                 // it's in the file system, get it there
                 string path = ValidationHelper.GetString(dr["AttachmentFolder"], "").Trim('~').TrimEnd('/');
                 // Relative Path
-                if (path.StartsWith("/"))
+                if (path.Trim('~').StartsWith("/") || string.IsNullOrWhiteSpace(path.Trim('~')))
                 {
                     path = AppDomain.CurrentDomain.BaseDirectory.Replace("\\", "/").Trim('/') + path;
                 }
@@ -702,13 +737,15 @@ where AttachmentGUID = @AttachmentGuid", new QueryDataParameters() { { "@Attachm
                 string attachmentPath = $"{attachmentGuidStr.Substring(0, 2)}/{attachmentGuid}{attachment.AttachmentExtension}".ToLower();
                 var possiblePaths = new string[]
                 {
+                    $"{path}/{siteName.ToLower()}/files/{attachmentPath}".Replace("/","\\"),
                     $"{path}/{siteName.ToLower()}/{attachmentPath}".Replace("/","\\"),
+                    $"{path}/files/{attachmentPath}".Replace("/","\\"),
                     $"{path}/{attachmentPath}".Replace("/","\\"),
                 };
                 string foundPath = string.Empty;
                 foreach (var possiblePath in possiblePaths)
                 {
-                    if (File.Exists(possiblePath))
+                    if (string.IsNullOrWhiteSpace(foundPath) && File.Exists(possiblePath))
                     {
                         foundPath = possiblePath;
                     }

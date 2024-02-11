@@ -21,8 +21,10 @@ Thirdly, if you wish to move away from attachments, this tool can also replace a
 3. Make sure the module installed by checking the event log
 4. Go to Modules -> search for the migration toolkit module, edit it and add it to the current site(s)
 5. Use the UI to add any Database tables + fields that may contain links to media files/attachments or GUIDs of existing media files or attachments
-6. [Configure and enable Azure Blob Storage](https://docs.xperience.io/custom-development/working-with-physical-files-using-the-api/configuring-file-system-providers/configuring-azure-storage), here's a sample [configuration for the MVC](https://github.com/KenticoDevTrev/XperienceCommunity.Baseline/blob/master/starting-site/kx13/MVC/MVC/Configuration/AzureBlobStorageModule.cs), you'll need a matching on in the admin as well.
-7. When ready, backup your database, and run the conversion.*
+6. Include the SampleRunningCode/Run pages into your admin, modify the `GetSettings` and `GetAttachmentSettings` in the aspx.cs, include in solution and rebuild, hit this directly (for now, eventually will get UI fixed up)
+7. Run steps 1-3 on the sample Run page.
+8. [Configure and enable Azure Blob Storage](https://docs.xperience.io/custom-development/working-with-physical-files-using-the-api/configuring-file-system-providers/configuring-azure-storage), here's a sample [configuration for the MVC](https://github.com/KenticoDevTrev/XperienceCommunity.Baseline/blob/master/starting-site/kx13/MVC/MVC/Configuration/AzureBlobStorageModule.cs), you'll need a matching on in the admin as well.
+9. When ready, run operations 4, and optionally 5 to migrate to azure*
 
 * It's best to run this locally, then push up the database changes.  If your site is 'live', i would plan a content freeze window, clone the production database, bring it locally, run these operations, then push back up the production database ALONG WITH your azure shared blob storage configuration.  You can push the azure configuration first, then restore the database to prevent 'down time'
 

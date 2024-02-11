@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.002.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "KX12", "KX12", "{653B572A-C592-45C1-AC6A-94317F67E258}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MediaLibraryMigrationToolkit", "KX12\XperienceCommunity.MediaLibraryMigrationToolkit.KX12.Admin\MediaLibraryMigrationToolkit.csproj", "{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "KX13", "KX13", "{357A6FAD-9C04-4A1B-9FA6-7196C8F35264}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MediaLibraryMigrationToolkit", "KX13\XperienceCommunity.MediaLibraryMigrationToolkit.KX13.Admin\MediaLibraryMigrationToolkit.csproj", "{173BA78E-366F-4B69-9427-79A2E362C091}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{173BA78E-366F-4B69-9427-79A2E362C091}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{173BA78E-366F-4B69-9427-79A2E362C091}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{173BA78E-366F-4B69-9427-79A2E362C091}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{173BA78E-366F-4B69-9427-79A2E362C091}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{DDEDE7DD-4EE6-4BED-967F-748134FDD7C7} = {653B572A-C592-45C1-AC6A-94317F67E258}
+		{173BA78E-366F-4B69-9427-79A2E362C091} = {357A6FAD-9C04-4A1B-9FA6-7196C8F35264}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F251D44A-AAA7-4D5D-A342-B56D4174997A}
+	EndGlobalSection
+EndGlobal

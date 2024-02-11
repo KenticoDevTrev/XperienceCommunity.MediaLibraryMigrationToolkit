@@ -186,6 +186,7 @@ FileID as [OldFileID]
            ,[FileModifiedByUserID]
            ,[FileModifiedWhen]
            ,[FileCustomData]
+        ,NULL as [Error]
 		   from Media_File MF
 		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
             ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
@@ -473,7 +474,13 @@ SELECT count(*) as siblings
                 catch (Exception ex)
                 {
                     // restore the media file data and then throw normal exception.
-                    file.CopyTo(oldFileFullPath);
+                    try { 
+                        file.CopyTo(oldFileFullPath);
+                    }
+                    catch (IOException)
+                    {
+                        // already there
+                    }
                     string restoreSql = $@"INSERT INTO [dbo].[Media_File]
            ([FileName]
            ,[FileTitle]
@@ -533,10 +540,13 @@ SELECT count(*) as siblings
                     };
                     ConnectionHelper.ExecuteNonQuery(restoreSql, queryParams, QueryTypeEnum.SQLQuery);
 
-                    throw ex;
+                    fileCloneData.Error = $"{ex.GetType()}: {ex.Message}";
+                    _media_FileCloneInfoProvider.Set(fileCloneData);
+                    return false;
                 }
 
                 // Update tracking table
+                fileCloneData.SetValue(nameof(Media_FileCloneInfo.Error), null);
                 fileCloneData.FileName = newFile.FileName;
                 fileCloneData.FilePath = newFile.FilePath;
                 fileCloneData.FileExtension = newFile.FileExtension;
@@ -564,6 +574,8 @@ SELECT count(*) as siblings
             }
             else
             {
+                fileCloneData.Error = $"Media file at path [{path}] not found, could not clone media file.";
+                _media_FileCloneInfoProvider.Set(fileCloneData);
                 return false;
             }
 
@@ -674,6 +686,18 @@ inner join CMS_Tree on NodeID = DocumentNodeID";
 
 
             return new MediaTrackingDictionaries(fullPathDictionary, fileGuidToRelativeFilePath, encodedPathDictionary, fileGuidToNewUrl, allMediaPrefixes.Keys.ToList(), allAttachmentGuids, attachmentNodePathToGuid, attachmentNodePathEncodedToGuid, allConfigurations);
+        }
+
+        /// <summary>
+        /// Deletes any duplicate media files by Guid, this sometimes occurs if ran multiple times and errors occur between them.
+        /// </summary>
+        public static void ClearDuplicateMediaFiles()
+        {
+            var sql = @"delete from Media_File where FileID in (
+select allItems.FileID from (
+select FileID, ROW_NUMBER() over (partition by FileGuid order by FileID asc) as [count] from Media_File
+) allItems where Count > 1)";
+            ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
         }
 
     }

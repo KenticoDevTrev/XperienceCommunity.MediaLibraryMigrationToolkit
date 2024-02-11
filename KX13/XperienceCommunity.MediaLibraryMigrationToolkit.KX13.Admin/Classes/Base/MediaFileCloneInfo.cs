@@ -179,6 +179,25 @@ namespace MediaLibraryMigrationToolkit
         }
 
 
+
+
+        /// <summary>
+        /// If true, this file has been migrated to blob storage..
+        /// </summary>
+        [DatabaseField]
+        public virtual string Error
+        {
+            get
+            {
+                return ValidationHelper.GetString(GetValue("Error"), String.Empty);
+            }
+            set
+            {
+                SetValue("Error", value);
+            }
+        }
+
+
         /// <summary>
         /// File name.
         /// </summary>

@@ -206,6 +206,7 @@ FileID as [OldFileID]
            ,0 as [FoundUsage]
            ,0 as [KeepFile]
            ,0 as [Processed]
+	   ,NULL as [Error]
            ,[FileName]
            ,[FileTitle]
            ,[FileDescription]
@@ -223,7 +224,6 @@ FileID as [OldFileID]
            ,[FileModifiedByUserID]
            ,[FileModifiedWhen]
            ,[FileCustomData]
-            ,NULL as [Error]
 		   from Media_File MF
 		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
                 ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);

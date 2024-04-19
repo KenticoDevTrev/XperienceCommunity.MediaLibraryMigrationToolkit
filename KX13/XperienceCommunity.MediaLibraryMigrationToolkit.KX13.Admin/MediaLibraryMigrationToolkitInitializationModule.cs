@@ -60,7 +60,7 @@ END";
                 e.Manifest.Metadata.SetIconUrl("https://www.hbs.net/HBS/media/Favicon/favicon-96x96.png");
                 e.Manifest.Metadata.Tags = "Kentico Media Azure Migration";
                 e.Manifest.Metadata.Id = "XperienceCommunity.MediaLibraryMigrationToolkit";
-                e.Manifest.Metadata.ReleaseNotes = "Initial Release";
+                e.Manifest.Metadata.ReleaseNotes = "Fixed SQL Queries so the Error field is in the right spot for the insert.";
                 // Add nuget dependencies
 
                 // Add dependencies

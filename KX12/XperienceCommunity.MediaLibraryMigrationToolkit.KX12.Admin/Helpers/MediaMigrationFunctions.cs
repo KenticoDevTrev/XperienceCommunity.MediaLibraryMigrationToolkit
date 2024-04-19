@@ -159,7 +159,44 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             // Delete any items no longer applicable
             ConnectionHelper.ExecuteNonQuery($"delete from [MediaLibraryMigrationToolkit_Media_File] where FileGUID not in (select M.FileGuid from Media_File M)", new QueryDataParameters(), QueryTypeEnum.SQLQuery);
 
-            string sql = @"
+string sql = @"
+insert into [MediaLibraryMigrationToolkit_Media_File]
+select
+GETDATE() as [Media_FileLastModified],
+FileID as [OldFileID]
+           ,null as [NewFileID]
+		   ,0 As [UsageChecked]
+           ,0 as [FoundUsage]
+           ,0 as [KeepFile]
+           ,0 as [Processed]
+           ,NULL as [Error]
+           ,[FileName]
+           ,[FileTitle]
+           ,[FileDescription]
+           ,[FileExtension]
+           ,[FileMimeType]
+		   ,[FilePath]
+           ,[FileSize]
+           ,[FileImageWidth]
+           ,[FileImageHeight]
+           ,[FileGUID]
+           ,[FileLibraryID]
+           ,[FileSiteID]
+           ,[FileCreatedByUserID]
+           ,[FileCreatedWhen]
+           ,[FileModifiedByUserID]
+           ,[FileModifiedWhen]
+           ,[FileCustomData]
+		   from Media_File MF
+		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
+            try
+            {
+                ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+            }
+            catch (Exception ex)
+            {
+                // Try old location
+                sql = @"
 insert into [MediaLibraryMigrationToolkit_Media_File]
 select
 GETDATE() as [Media_FileLastModified],
@@ -186,11 +223,11 @@ FileID as [OldFileID]
            ,[FileModifiedByUserID]
            ,[FileModifiedWhen]
            ,[FileCustomData]
-        ,NULL as [Error]
+            ,NULL as [Error]
 		   from Media_File MF
 		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
-            ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
-
+                ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+            }
             // Now run update command
             string updateSql = @"update [MediaLibraryMigrationToolkit_Media_File] set
       [Media_FileLastModified] = CMF.FileModifiedWhen
@@ -541,7 +578,7 @@ SELECT count(*) as siblings
                     ConnectionHelper.ExecuteNonQuery(restoreSql, queryParams, QueryTypeEnum.SQLQuery);
 
                     fileCloneData.Error = $"{ex.GetType()}: {ex.Message}";
-                    _media_FileCloneInfoProvider.Set(fileCloneData);
+                    Media_FileCloneInfoProvider.SetMedia_FileCloneInfo(fileCloneData);
                     return false;
                 }
 
@@ -575,7 +612,7 @@ SELECT count(*) as siblings
             else
             {
                 fileCloneData.Error = $"Media file at path [{path}] not found, could not clone media file.";
-                _media_FileCloneInfoProvider.Set(fileCloneData);
+                Media_FileCloneInfoProvider.SetMedia_FileCloneInfo(fileCloneData);
                 return false;
             }
 

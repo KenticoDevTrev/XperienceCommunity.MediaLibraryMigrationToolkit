@@ -1,5 +1,4 @@
-﻿
-using CMS.DataEngine;
+﻿using CMS.DataEngine;
 using CMS.DocumentEngine;
 using CMS.EventLog;
 using CMS.Helpers;
@@ -15,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
+using CMS.SiteProvider;
 
 namespace XperienceCommunity.MediaLibraryMigrationToolkit
 {
@@ -97,7 +97,7 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             }
             MediaConversionObjects = mediaConversionObjects.ToList();
 
-            _multipleSitesExist = Service.Resolve<ISiteInfoProvider>().Get().Count > 1;
+            _multipleSitesExist = SiteInfoProvider.GetSites().Count > 1;
         }
 
         /// <summary>
@@ -183,8 +183,12 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             }
 
             // Runs statements
-            ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlDelete), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
-            ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlInsert), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            if(sqlDelete.Count > 0) { 
+                ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlDelete), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            }
+            if(sqlInsert.Count > 0) { 
+                ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlInsert), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            }
         }
 
         /// <summary>

@@ -166,6 +166,7 @@ FileID as [OldFileID]
            ,0 as [FoundUsage]
            ,0 as [KeepFile]
            ,0 as [Processed]
+           ,NULL as [Error]
            ,[FileName]
            ,[FileTitle]
            ,[FileDescription]
@@ -183,10 +184,47 @@ FileID as [OldFileID]
            ,[FileModifiedByUserID]
            ,[FileModifiedWhen]
            ,[FileCustomData]
-           ,NULL as [Error]
 		   from Media_File MF
 		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
-            ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+            try
+            {
+                ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+            }
+            catch (Exception ex)
+            {
+                // Try old location
+                sql = @"
+insert into [MediaLibraryMigrationToolkit_Media_File]
+select
+GETDATE() as [Media_FileLastModified],
+FileID as [OldFileID]
+           ,null as [NewFileID]
+		   ,0 As [UsageChecked]
+           ,0 as [FoundUsage]
+           ,0 as [KeepFile]
+           ,0 as [Processed]
+           ,[FileName]
+           ,[FileTitle]
+           ,[FileDescription]
+           ,[FileExtension]
+           ,[FileMimeType]
+		   ,[FilePath]
+           ,[FileSize]
+           ,[FileImageWidth]
+           ,[FileImageHeight]
+           ,[FileGUID]
+           ,[FileLibraryID]
+           ,[FileSiteID]
+           ,[FileCreatedByUserID]
+           ,[FileCreatedWhen]
+           ,[FileModifiedByUserID]
+           ,[FileModifiedWhen]
+           ,[FileCustomData]
+            ,NULL as [Error]
+		   from Media_File MF
+		   where  MF.FileGUID not in (Select MLMT.FileGuid from MediaLibraryMigrationToolkit_Media_File MLMT)";
+                ConnectionHelper.ExecuteNonQuery(sql, new QueryDataParameters(), QueryTypeEnum.SQLQuery);
+            }
 
             // Now run update command
             string updateSql = @"update [MediaLibraryMigrationToolkit_Media_File] set

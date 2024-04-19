@@ -187,8 +187,12 @@ namespace XperienceCommunity.MediaLibraryMigrationToolkit
             }
 
             // Runs statements
-            ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlDelete), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
-            ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlInsert), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            if(sqlDelete.Count > 0) { 
+                ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlDelete), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            }
+            if(sqlInsert.Count > 0) { 
+                ConnectionHelper.ExecuteNonQuery(string.Join("\n\r", sqlInsert), new QueryDataParameters(), QueryTypeEnum.SQLQuery, false);
+            }
         }
 
         /// <summary>
